@@ -28,9 +28,15 @@ BonitaAuthentication-1 {
 		 
 	// if the user does not exist in the LDAP, use the BonitaJaas
 	com.bonitasoft.jaaslogin.JaasBonitaLogin sufficient
-		tenantid="1";
+		tenantid="1"
+		debug=false;
 
  
 
 };
+
+ATTENTION:
+The LDAP-Synchronizer tool creates users in Bonita when it detect a user exist in the LDAP, and not in Bonita. Doing that, it creates a very easy password.
+So, using this Authentication implie that you change this password in the Bonita Database, else, if the password failed in the LDAP, this JAAS source will check
+the user with this easy-password.
 
