@@ -42,7 +42,8 @@ class JaasBonitaLoginThread implements Runnable {
         return succedded;
     }
     public void run() {
-        succedded = checkUserByApi(tenantId, userName, passWord);
+        // succedded = checkUserByApi(tenantId, userName, passWord);
+        succedded = checkUserByServiceAPI(tenantId, userName, passWord);
     }
     
    
@@ -53,7 +54,7 @@ class JaasBonitaLoginThread implements Runnable {
      * @param password
      * @return
      */
-    private boolean checkUserByServiceAPI(final long tenantId, final String username, final String password)
+    public boolean checkUserByServiceAPI(final long tenantId, final String username, final String password)
     {
         boolean succeeded = false;
         try
@@ -69,13 +70,14 @@ class JaasBonitaLoginThread implements Runnable {
              * user = identityAPI.getUserByUserName(username);
              * suser = TenantServiceSingleton.getInstance(1).getIdentityService().getUser(user.getId());
              */
+            
             // check the password
+            IdentityService identityService = TenantServiceSingleton.getInstance(tenantId).getIdentityService();
+            suser = identityService.getUserByUserName(username);
+            // jaasBonitaLogin.log(" User found[" + suser.getUserName() + "] id[" + suser.getId() + "]", true);
 
-            suser = TenantServiceSingleton.getInstance(1).getIdentityService().getUserByUserName(username);
-            jaasBonitaLogin.log(" User found[" + suser.getUserName() + "] id[" + suser.getId() + "]", true);
-
-            succeeded = TenantServiceSingleton.getInstance(1).getIdentityService().checkCredentials(suser, password);
-            jaasBonitaLogin.log(" RESULT SUser[" + username + "] succeed " + succeeded, false);
+            succeeded = identityService.checkCredentials(suser, password);            
+            jaasBonitaLogin.log("Authentication User[" + username + "] succeed [" + succeeded + "]", false);
 
         } catch (final SUserNotFoundException e) {
             jaasBonitaLogin.log("User[" + username + "] not found via SUser: " + e.toString(), false);
@@ -119,11 +121,9 @@ class JaasBonitaLoginThread implements Runnable {
             final IdentityAPI identityAPI = connectorAccessorAPI.getIdentityAPI();
             user = identityAPI.getUserByUserName(username);
             succeeded = password.equals( user.getPassword());
-            jaasBonitaLogin.log(" RESULT User[" + username + "] succeed " + succeeded + "]", false);
+            jaasBonitaLogin.log("Authentication User[" + username + "] succeed [" + succeeded + "] password["+password+"] UserReference["+user.getPassword()+"]", false);
             // getPassword()=[" + user.getPassword() + "] password=[" + password + "]", false);
             // for the moment, if the user exist, consider it at true
-            succeeded = true;
-
         } catch (final UserNotFoundException e)
         {
             jaasBonitaLogin.log("User[" + username + "] not found via getUserByUserName: " + e.toString(), false);

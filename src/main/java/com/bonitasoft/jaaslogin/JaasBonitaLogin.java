@@ -73,7 +73,7 @@ public class JaasBonitaLogin implements LoginModule {
                 
                 log("initialize, Options: " + options.toString() + " Error "+e.getMessage()+" at "+exceptionDetails, true);
             };
-            log("initialize, Options: " + options.toString() + " isDebug[" + isdebug + "] isDiscoverUser[" + isDiscoverUser + "]", false);
+            log("initialize v2.0.2 for 7.10.0 only, Options: " + options.toString() + " isDebug[" + isdebug + "] isDiscoverUser[" + isDiscoverUser + "]", false);
         }
         succeeded = false;
     }
@@ -128,38 +128,43 @@ public class JaasBonitaLogin implements LoginModule {
             discoverUsers(1);
         }
 
+        
+
         // We must start a new Thread to check by the API, because a transaction is open here
         JaasBonitaLoginThread runJaasLoginThread = new JaasBonitaLoginThread(this, tenantId, username, password);
         
-        try {
-        
-            FutureTask<String> futureTask = new FutureTask<>(runJaasLoginThread, "Check Login");
-            // create thread pool of 1 size for ExecutorService 
-            ExecutorService executor = Executors.newFixedThreadPool(1);
-            executor.execute(futureTask);
-        
-            // wait end of execution
-            futureTask.get();
-            succeeded= runJaasLoginThread.succedded;
-        } catch (InterruptedException e) {
-            StringWriter sw = new StringWriter();
-            e.printStackTrace(new PrintWriter(sw));
-            String exceptionDetails = sw.toString();
-
-            logger.severe("JaasBonitaLogin. error " + e.toString()+" at "+exceptionDetails);
-            Thread.currentThread().interrupt();
-        } catch (ExecutionException e) {
-            StringWriter sw = new StringWriter();
-            e.printStackTrace(new PrintWriter(sw));
-            String exceptionDetails = sw.toString();
-            logger.severe("JaasBonitaLogin. error " + e.toString()+" at "+exceptionDetails);
-        }
-        
+        succeeded = runJaasLoginThread.checkUserByServiceAPI( tenantId, username, password);
+        /*
+            try {
+            
+                FutureTask<String> futureTask = new FutureTask<>(runJaasLoginThread, "Check Login");
+                // create thread pool of 1 size for ExecutorService 
+                ExecutorService executor = Executors.newFixedThreadPool(1);
+                executor.execute(futureTask);
+            
+                // wait end of execution
+                futureTask.get();
+                succeeded= runJaasLoginThread.succedded;
+            } catch (InterruptedException e) {
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                String exceptionDetails = sw.toString();
+    
+                logger.severe("JaasBonitaLogin. error " + e.toString()+" at "+exceptionDetails);
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException e) {
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                String exceptionDetails = sw.toString();
+                logger.severe("JaasBonitaLogin. error " + e.toString()+" at "+exceptionDetails);
+            }
+        }        
+        */
 
         if (!succeeded) {
             throw new FailedLoginException("NoLogin for [" + username + "]");
         }
-        log("Check User[" + username + "] Result[" + succeeded + "]", false);
+        // Already logged log("Check User[" + username + "] Result[" + succeeded + "]", false);
 
         return succeeded;
     }
@@ -217,13 +222,13 @@ public class JaasBonitaLogin implements LoginModule {
         {
             if (isdebug) {
                 // to go to the System.out like do a real LDAP module... go to Catalina.out in fact
-                System.out.println("  JaasBonitaLogin(debug):" + message);
-                logger.info("  JaasBonitaLogin(debug):" + message);
+                System.out.println("                [JaasBonitaLogin(debug)] " + message);
+                logger.info("                [JaasBonitaLogin(debug)] " + message);
             }
         } else {
-            System.out.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JaasBonitaLogin: " + message);
+            System.out.println("                [JaasBonitaLogin] " + message);
 
-            logger.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JaasBonitaLogin: " + message);
+            logger.info("                [JaasBonitaLogin] " + message);
         }
     }
 
