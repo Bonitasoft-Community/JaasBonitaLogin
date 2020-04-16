@@ -32,8 +32,15 @@ public class JaasBonitaLogin implements LoginModule {
     // private Map<String, ?> options;
     private boolean isdebug = false;
     private boolean isDiscoverUser = false;
+    private String customuserattribut;
     boolean succeeded = false;
     private Long optTenantId = null;
+
+    public enum TYPECHECK {
+        SERVICE, LOGINAPI, CHECKPASSWORD, JUSTVERIFYCUSTOMATTRIBUT
+    };
+
+    public TYPECHECK typeCheck = TYPECHECK.SERVICE;
 
     public JaasBonitaLogin() {
         log("Login Module - constructor called", true);
@@ -55,31 +62,29 @@ public class JaasBonitaLogin implements LoginModule {
     public void initialize(final Subject subject, final CallbackHandler callbackHandler, final Map<String, ?> sharedState,
             final Map<String, ?> options) {
 
-        log("initialize called", true);        
+        log("initialize called", true);
         this.callbackHandler = callbackHandler;
-        
-        if (options != null)
-        {
-            try
-            {
+
+        if (options != null) {
+            try {
                 isdebug = "true".equalsIgnoreCase(getOptionString(options, "debug", "false"));
                 optTenantId = Long.valueOf(getOptionString(options, "tenantid", "1"));
                 isDiscoverUser = "true".equalsIgnoreCase(getOptionString(options, "discoveruser", "false"));
-            } catch (final Exception e)
-            {
+                customuserattribut = getOptionString(options, "customuserattribut", null);
+            } catch (final Exception e) {
                 StringWriter sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
                 String exceptionDetails = sw.toString();
-                
-                log("initialize, Options: " + options.toString() + " Error "+e.getMessage()+" at "+exceptionDetails, true);
-            };
-            log("initialize v2.0.2 for 7.10.0 only, Options: " + options.toString() + " isDebug[" + isdebug + "] isDiscoverUser[" + isDiscoverUser + "]", false);
+
+                log("initialize, Options: " + options.toString() + " Error " + e.getMessage() + " at " + exceptionDetails, true);
+            } ;
+            log("initialize v2.0.2 for 7.10.0 only, Options: " + options.toString() + " isDebug[" + isdebug + "] isDiscoverUser[" + isDiscoverUser + "] customuserattribut[" + customuserattribut + "]", false);
         }
         succeeded = false;
     }
-    
-    private String getOptionString(Map<String, ?> options, String attribut, String defaultValue ) {
-        if (options.get(attribut)==null)
+
+    private String getOptionString(Map<String, ?> options, String attribut, String defaultValue) {
+        if (options.get(attribut) == null)
             return defaultValue;
         return options.get(attribut).toString();
     }
@@ -101,16 +106,16 @@ public class JaasBonitaLogin implements LoginModule {
             callbackHandler.handle(callbacks);
         } catch (final IOException e) {
             StringWriter sw = new StringWriter();
-             e.printStackTrace(new PrintWriter(sw));
-             String exceptionDetails = sw.toString();
-             
-            throw new LoginException("Oops, IOException calling handle on callbackHandler at "+exceptionDetails);
+            e.printStackTrace(new PrintWriter(sw));
+            String exceptionDetails = sw.toString();
+
+            throw new LoginException("Oops, IOException calling handle on callbackHandler at " + exceptionDetails);
         } catch (final UnsupportedCallbackException e) {
             StringWriter sw = new StringWriter();
-             e.printStackTrace(new PrintWriter(sw));
-             String exceptionDetails = sw.toString();
-             
-            throw new LoginException("Oops, UnsupportedCallbackException calling handle on callbackHandler at "+exceptionDetails);
+            e.printStackTrace(new PrintWriter(sw));
+            String exceptionDetails = sw.toString();
+
+            throw new LoginException("Oops, UnsupportedCallbackException calling handle on callbackHandler at " + exceptionDetails);
         }
 
         final NameCallback nameCallback = (NameCallback) callbacks[0];
@@ -119,7 +124,7 @@ public class JaasBonitaLogin implements LoginModule {
         final String username = nameCallback.getName();
         final String password = new String(passwordCallback.getPassword());
 
-        log("Check User[" + username + "] v2.0 - API", true);
+        log("Check User[" + username + "] v2.1 - API", true);
 
         // -------------------------------------------- get the tenant
         final long tenantId = optTenantId == null ? 1 : optTenantId;
@@ -128,43 +133,46 @@ public class JaasBonitaLogin implements LoginModule {
             discoverUsers(1);
         }
 
-        
-
         // We must start a new Thread to check by the API, because a transaction is open here
-        JaasBonitaLoginThread runJaasLoginThread = new JaasBonitaLoginThread(this, tenantId, username, password);
-        
-        succeeded = runJaasLoginThread.checkUserByServiceAPI( tenantId, username, password);
-        /*
-            try {
-            
-                FutureTask<String> futureTask = new FutureTask<>(runJaasLoginThread, "Check Login");
-                // create thread pool of 1 size for ExecutorService 
-                ExecutorService executor = Executors.newFixedThreadPool(1);
-                executor.execute(futureTask);
-            
-                // wait end of execution
-                futureTask.get();
-                succeeded= runJaasLoginThread.succedded;
-            } catch (InterruptedException e) {
-                StringWriter sw = new StringWriter();
-                e.printStackTrace(new PrintWriter(sw));
-                String exceptionDetails = sw.toString();
-    
-                logger.severe("JaasBonitaLogin. error " + e.toString()+" at "+exceptionDetails);
-                Thread.currentThread().interrupt();
-            } catch (ExecutionException e) {
-                StringWriter sw = new StringWriter();
-                e.printStackTrace(new PrintWriter(sw));
-                String exceptionDetails = sw.toString();
-                logger.severe("JaasBonitaLogin. error " + e.toString()+" at "+exceptionDetails);
+        JaasBonitaLoginThread runJaasLoginThread = new JaasBonitaLoginThread(this, typeCheck, customuserattribut, tenantId, username, password);
+
+        if (typeCheck == TYPECHECK.SERVICE) {
+            succeeded = runJaasLoginThread.checkUserByServiceAPI(tenantId, username, password);
+            if (!succeeded) {
+                throw new FailedLoginException("NoLogin for [" + username + "]");
             }
-        }        
-        */
+            // let's continue the check, but in a different thread now
+            // userId is updated in the object, so the verification has all what it need
+            runJaasLoginThread.setTypeCheck(TYPECHECK.JUSTVERIFYCUSTOMATTRIBUT);
+        }
+
+        try {
+
+            FutureTask<String> futureTask = new FutureTask<>(runJaasLoginThread, "Check Login");
+            // create thread pool of 1 size for ExecutorService 
+            ExecutorService executor = Executors.newFixedThreadPool(1);
+            executor.execute(futureTask);
+
+            // wait end of execution
+            futureTask.get();
+            succeeded = runJaasLoginThread.isSucceed();
+        } catch (InterruptedException e) {
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            String exceptionDetails = sw.toString();
+
+            logger.severe("JaasBonitaLogin. error " + e.toString() + " at " + exceptionDetails);
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException e) {
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            String exceptionDetails = sw.toString();
+            logger.severe("JaasBonitaLogin. error " + e.toString() + " at " + exceptionDetails);
+        }
 
         if (!succeeded) {
             throw new FailedLoginException("NoLogin for [" + username + "]");
         }
-        // Already logged log("Check User[" + username + "] Result[" + succeeded + "]", false);
 
         return succeeded;
     }
@@ -174,39 +182,32 @@ public class JaasBonitaLogin implements LoginModule {
         return false;
     }
 
-    
-    
-  
-
     /**
      * @param tenantId
      */
     private void discoverUsers(final long tenantId) {
 
         StringBuilder trace = new StringBuilder();
-        try
-        {
+        try {
             final IdentityService identityService = TenantServiceSingleton.getInstance(tenantId).getIdentityService();
 
-            trace.append( "IdentidyService: [" + identityService.toString() + "]");
+            trace.append("IdentidyService: [" + identityService.toString() + "]");
 
             final long nbUsers = identityService.getNumberOfUsers();
-            trace.append( "NbUsers = " + nbUsers + ";" );
+            trace.append("NbUsers = " + nbUsers + ";");
             final List<SUser> listUsers = identityService.getUsers(0, 1000);
-            for (final SUser suser : listUsers)
-            {
-                trace.append( "user[" + suser.getUserName() + "] id[" + suser.getId() + "] getPassword[" + suser.getPassword() + "]"
+            for (final SUser suser : listUsers) {
+                trace.append("user[" + suser.getUserName() + "] id[" + suser.getId() + "] getPassword[" + suser.getPassword() + "]"
                         + identityService.checkCredentials(suser, "bpm"));
 
             }
             log("Discover User [" + trace.toString() + "]", true);
-        } catch (final Exception e)
-        {
+        } catch (final Exception e) {
             StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             String exceptionDetails = sw.toString();
 
-            log("ERROR at Discover User TenantId[" + tenantId + "] Error [" + e.toString() + "] trace[" + trace.toString() + "] at "+exceptionDetails, true);
+            log("ERROR at Discover User TenantId[" + tenantId + "] Error [" + e.toString() + "] trace[" + trace.toString() + "] at " + exceptionDetails, true);
         }
 
     }
@@ -216,10 +217,8 @@ public class JaasBonitaLogin implements LoginModule {
      */
     Logger logger = Logger.getLogger("com.bonitasoft.jaaslogin.JaasBonitaLogin");
 
-    void log(final String message, final boolean logAsDebug)
-    {
-        if (logAsDebug)
-        {
+    void log(final String message, final boolean logAsDebug) {
+        if (logAsDebug) {
             if (isdebug) {
                 // to go to the System.out like do a real LDAP module... go to Catalina.out in fact
                 System.out.println("                [JaasBonitaLogin(debug)] " + message);
@@ -232,5 +231,4 @@ public class JaasBonitaLogin implements LoginModule {
         }
     }
 
-           
 }
